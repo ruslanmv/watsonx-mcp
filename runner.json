@@ -1,0 +1,22 @@
+{
+  "type": "python",
+  "entry": "bin/run_watsonx_mcp.py",
+  "python": {
+    "venv": ".venv"
+  },
+  "endpoint": "/sse",
+  "sse": {
+    "endpoint": "/sse"
+  },
+  "health": {
+    "path": "/healthz"
+  },
+  "env": {
+    "PORT": "${port}",
+    "WATSONX_AGENT_PORT": "${port}",
+    "WATSONX_API_KEY": "${WATSONX_API_KEY}",
+    "WATSONX_URL": "${WATSONX_URL}",
+    "WATSONX_PROJECT_ID": "${WATSONX_PROJECT_ID}",
+    "MODEL_ID": "${MODEL_ID}"
+  }
+}
