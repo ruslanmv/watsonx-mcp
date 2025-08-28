@@ -18,31 +18,28 @@ import uvicorn
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 6288
-MAX_PORT_TRIES = 20
 
 READY = {"model": False}  # Simple readiness flag
 
 
-def _pick_available_port(
-    preferred: int, host: str = HOST, max_tries: int = MAX_PORT_TRIES
-) -> int:
-    """Find the first available port >= preferred (best-effort, race-safe enough for local/dev)."""
-    port = preferred
-    for _ in range(max_tries):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                s.bind((host, port))
-                return port  # available
-            except OSError:
-                port += 1
-    raise RuntimeError(
-        f"No free port found starting at {preferred} (tried {max_tries} ports)."
-    )
+def _require_port_available(host: str, port: int) -> None:
+    """
+    Fail fast if the requested port is already in use.
+    Keeping a static, predictable port avoids mismatches with manifests/gateways.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+        except OSError as e:
+            raise RuntimeError(
+                f"Port {port} is already in use on {host}. "
+                "Set WATSONX_AGENT_PORT/PORT to a free port."
+            ) from e
 
 
 def main() -> None:
-    # Load env vars (do this first so local .env files are honored)
+    # Load env vars first (local .env honored)
     load_dotenv()
 
     API_KEY = os.getenv("WATSONX_API_KEY")
@@ -50,15 +47,13 @@ def main() -> None:
     PROJECT_ID = os.getenv("WATSONX_PROJECT_ID")
     MODEL_ID = os.getenv("MODEL_ID", "ibm/granite-3-3-8b-instruct")
 
-    # Prefer explicit agent port; fall back to PORT; finally default
+    # Port selection: bind EXACTLY to what we’re asked to use.
     try:
-        preferred_port = int(
-            os.getenv("WATSONX_AGENT_PORT") or os.getenv("PORT") or DEFAULT_PORT
-        )
+        port = int(os.getenv("WATSONX_AGENT_PORT") or os.getenv("PORT") or DEFAULT_PORT)
     except ValueError:
-        preferred_port = DEFAULT_PORT
+        port = DEFAULT_PORT
 
-    # Minimal, readable log format; no secrets logged
+    # Minimal, readable log format
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
@@ -78,14 +73,10 @@ def main() -> None:
     if missing:
         raise RuntimeError(f"Missing required env var(s): {', '.join(missing)}")
 
-    # Choose a free port (best-effort)
-    port = _pick_available_port(preferred_port)
-    if port != preferred_port:
-        log.warning(
-            "Port %d in use; selected next available port %d", preferred_port, port
-        )
+    # Ensure the chosen port is free (clearer error than letting uvicorn fail later)
+    _require_port_available(HOST, port)
 
-    # Initialize model client (kept simple; heavy checks belong in startup probes)
+    # Initialize model client
     creds = Credentials(url=URL, api_key=API_KEY)
     model = ModelInference(model_id=MODEL_ID, credentials=creds, project_id=PROJECT_ID)
     READY["model"] = True
@@ -99,9 +90,15 @@ def main() -> None:
         if q == "0":
             q = "What is the capital of Italy?"
         log.info("chat() query=%r", q)
+
         params = {GenParams.DECODING_METHOD: "greedy", GenParams.MAX_NEW_TOKENS: 200}
-        resp = model.generate_text(prompt=q, params=params, raw_response=True)
-        reply = resp["results"][0]["generated_text"].strip()
+        try:
+            resp = model.generate_text(prompt=q, params=params, raw_response=True)
+            reply = resp["results"][0]["generated_text"].strip()
+        except Exception as e:
+            log.exception("watsonx generate_text failed")
+            return f"Error from watsonx: {e}"
+
         log.info("chat() reply=%r", reply)
         return reply
 
@@ -119,7 +116,7 @@ def main() -> None:
     async def live(_request):
         return PlainTextResponse("ok")
 
-    # Build ASGI app: health routes + mounted MCP SSE app at /sse
+    # Build ASGI app: health routes first, then mount MCP SSE under /
     app = Starlette(
         routes=[
             Route("/health", health),

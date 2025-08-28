@@ -10,6 +10,12 @@ BRIGHT_GREEN  := $(shell tput -T screen setaf 10 2>/dev/null || printf '')
 DIM_GREEN     := $(shell tput -T screen setaf 2 2>/dev/null || printf '')
 RESET         := $(shell tput -T screen sgr0 2>/dev/null || printf '')
 
+# Load variables from .env if it exists, making them available to make
+ifneq (,$(wildcard .env))
+    include .env
+    export
+endif
+
 # ----- Configurable constants -----
 SYS_PYTHON ?= python3
 VENV_DIR   ?= .venv
@@ -24,8 +30,15 @@ CLIENT     ?= bin/client.py
 RUNNER     ?= runner.json
 MANIFEST   ?= manifests/watsonx.manifest.json
 DIST_DIR   ?= dist
-PORT       ?= 6288
-SSE_PATH   ?= /sse
+
+# --- Host/Port/SSE ---
+HOST        ?= 127.0.0.1
+PORT        ?= 6288
+# Use the port from .env if available, otherwise fall back to the default PORT
+AGENT_PORT  := $(or $(WATSONX_AGENT_PORT),$(PORT))
+SSE_PATH    ?= /sse
+HEALTH_PATH ?= /healthz
+
 ZIP_NAME   ?= watsonx-mcp-starter.zip
 
 # Sentinels
@@ -37,6 +50,11 @@ DEV_TOOLS ?= black ruff mypy pytest build twine mkdocs
 
 # Targets to scan/format/type-check
 PY_TARGETS := $(PKG) $(ENTRY) $(CLIENT)
+
+# Optional: allow passing a host flag to the sample client if it supports it.
+# Leave empty if your client has no --host option.
+CLIENT_HOST_FLAG ?=
+CLIENT_HOST      ?= $(HOST)
 
 .DEFAULT_GOAL := help
 
@@ -61,8 +79,8 @@ help:
 	@printf "  $(BRIGHT_GREEN)%-18s$(RESET) $(DIM_GREEN)%s$(RESET)\n" "json-lint" "Validate manifest JSON files"
 	@echo
 	@echo "$(BRIGHT_GREEN)Run & Inspect$(RESET)"
-	@printf "  $(BRIGHT_GREEN)%-18s$(RESET) $(DIM_GREEN)%s$(RESET)\n" "run" "Start local SSE server (PORT=$(PORT))"
-	@printf "  $(BRIGHT_GREEN)%-18s$(RESET) $(DIM_GREEN)%s$(RESET)\n" "health" "curl GET /healthz"
+	@printf "  $(BRIGHT_GREEN)%-18s$(RESET) $(DIM_GREEN)%s$(RESET)\n" "run" "Start local SSE server (reads .env for config)"
+	@printf "  $(BRIGHT_GREEN)%-18s$(RESET) $(DIM_GREEN)%s$(RESET)\n" "health" "curl GET $(HEALTH_PATH) on port $(AGENT_PORT)"
 	@printf "  $(BRIGHT_GREEN)%-18s$(RESET) $(DIM_GREEN)%s$(RESET)\n" "client" "Call tool once (use Q='your question')"
 	@printf "  $(BRIGHT_GREEN)%-18s$(RESET) $(DIM_GREEN)%s$(RESET)\n" "client-repl" "Interactive client loop (blank line to exit)"
 	@echo
@@ -90,7 +108,7 @@ $(VENV_CREATED):
 	@touch $@
 
 $(REQS_SENTINEL): pyproject.toml | $(VENV_CREATED)
-	@echo "$(DIM_GREEN)-> Installing project (editable) per pyproject.toml...$(RESET)"
+	@echo "$(DIM_GREEN)-> Installing project (editable) per pyproject.toml...(RESET)"
 	@$(PIP) install -e .
 	@touch $@
 
@@ -132,17 +150,17 @@ json-lint:
 # Run & Inspect
 # ---------------------------------------------------------------------------
 run: install
-	@echo "$(DIM_GREEN)-> Starting SSE server at http://127.0.0.1:$(PORT)$(SSE_PATH) ...$(RESET)"
-	@PYTHONPATH=. PORT=$(PORT) $(PYTHON) $(ENTRY)
+	@echo "$(DIM_GREEN)-> Starting SSE server... (port is configured by .env or app defaults)$(RESET)"
+	@PYTHONPATH=. $(PYTHON) $(ENTRY)
 
 health:
-	@echo "$(DIM_GREEN)-> GET /healthz (PORT=$(PORT))...$(RESET)"
-	@curl -fsS http://127.0.0.1:$(PORT)/healthz || (echo "Health check failed"; exit 1)
+	@echo "$(DIM_GREEN)-> GET $(HEALTH_PATH) (HOST=$(HOST) PORT=$(AGENT_PORT))...$(RESET)"
+	@curl -fsS http://$(HOST):$(AGENT_PORT)$(HEALTH_PATH) || (echo "Health check failed"; exit 1)
 
 # One-shot client call (set Q='your prompt' to override)
 client: install
-	@echo "$(DIM_GREEN)-> Calling client against http://127.0.0.1:$(PORT)$(SSE_PATH) ...$(RESET)"
-	@PYTHONPATH=. $(PYTHON) $(CLIENT) --port $(PORT) --path $(SSE_PATH) $(if $(Q),--query "$(Q)",)
+	@echo "$(DIM_GREEN)-> Calling client against http://$(HOST):$(AGENT_PORT)$(SSE_PATH) ...$(RESET)"
+	@PYTHONPATH=. $(PYTHON) $(CLIENT) $(if $(CLIENT_HOST_FLAG),$(CLIENT_HOST_FLAG) $(CLIENT_HOST),) --port $(AGENT_PORT) --path $(SSE_PATH) $(if $(Q),--query "$(Q)",)
 
 # Tiny interactive loop using the same client
 client-repl: install
@@ -151,7 +169,7 @@ client-repl: install
 		printf "$(BRIGHT_GREEN)you> $(RESET)"; \
 		read -r Q; \
 		[ -z "$$Q" ] && break; \
-		PYTHONPATH=. $(PYTHON) $(CLIENT) --port $(PORT) --path $(SSE_PATH) --query "$$Q"; \
+		PYTHONPATH=. $(PYTHON) $(CLIENT) $(if $(CLIENT_HOST_FLAG),$(CLIENT_HOST_FLAG) $(CLIENT_HOST),) --port $(AGENT_PORT) --path $(SSE_PATH) --query "$$Q"; \
 	done
 
 # ---------------------------------------------------------------------------
@@ -182,13 +200,13 @@ matrix-probe:
 
 matrix-call:
 	@command -v matrix >/dev/null 2>&1 || { echo "Matrix CLI not found on PATH"; exit 1; }
-	@matrix mcp call chat --alias watx-chat --args '{"query":"hello"}'
+	@matrix mcp call chat --alias watsonx-chat --args '{"query":"hello"}'
 
 # ---------------------------------------------------------------------------
 # Maintenance
 # ---------------------------------------------------------------------------
 clean:
-	@echo "$(DIM_GREEN)-> Cleaning build artifacts...$(RESET)"
+	@echo "$(DIM_GREEN)-> Cleaning build artifacts...(RESET)"
 	@rm -rf $(DIST_DIR) *.egg-info
 	@find . -type f -name "*.pyc" -delete
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
