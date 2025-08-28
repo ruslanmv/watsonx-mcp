@@ -59,7 +59,7 @@ curl -sS -X POST "$HUB/catalog/install" \
     }
   },
   "provenance": {
-    "source_url": "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/main/manifests/watsonx.manifest.json"
+    "source_url": "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/master/manifests/watsonx.manifest.json"
   },
   "target": "watsonx-chat/0.1.0"
 }

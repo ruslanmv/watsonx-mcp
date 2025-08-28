@@ -87,7 +87,7 @@ Install (using an inline manifest URL):
 ```bash
 matrix install tool:watsonx-chat@0.1.0 \
   --alias watsonx-chat \
-  --manifest "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/main/manifests/watsonx.manifest.json"
+  --manifest "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/master/manifests/watsonx.manifest.json"
 
 matrix run watsonx-chat
 # Matrix runtime will pass PORT and launch the SSE server

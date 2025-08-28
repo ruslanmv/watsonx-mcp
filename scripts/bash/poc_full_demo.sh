@@ -38,7 +38,7 @@ FQID="${FQID:-mcp_server:watsonx-agent@0.1.0}"
 TARGET="${TARGET:-${ALIAS}/0.1.0}"
 
 MANIFEST_PATH="${MANIFEST_PATH:-manifests/watsonx.manifest.json}"
-SOURCE_URL="${SOURCE_URL:-https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/main/manifests/watsonx.manifest.json}"
+SOURCE_URL="${SOURCE_URL:-https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/master/manifests/watsonx.manifest.json}"
 SSE_URL="${SSE_URL:-http://127.0.0.1:6288/sse}"
 
 START_LOCAL=0
