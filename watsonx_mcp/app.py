@@ -1,6 +1,7 @@
 import os
 import socket
 import logging
+import sys
 from typing import Union
 
 from dotenv import load_dotenv
@@ -9,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from ibm_watsonx_ai import Credentials
 from ibm_watsonx_ai.foundation_models import ModelInference
 from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
+from ibm_watsonx_ai.wml_client_error import WMLClientError
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, PlainTextResponse
@@ -39,6 +41,7 @@ def _require_port_available(host: str, port: int) -> None:
 
 
 def main() -> None:
+    """Main function to configure and run the application."""
     # Load env vars first (local .env honored)
     load_dotenv()
 
@@ -49,14 +52,14 @@ def main() -> None:
 
     # Port selection: bind EXACTLY to what we’re asked to use.
     try:
-        port = int(os.getenv("WATSONX_AGENT_PORT") or os.getenv("PORT") or DEFAULT_PORT)
+        port = int(os.getenv("WATSONX_AGENT_PORT") or DEFAULT_PORT)
     except ValueError:
         port = DEFAULT_PORT
 
     # Minimal, readable log format
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+        format="%(asctime)s %(levelname)s - %(message)s",
     )
     log = logging.getLogger("watsonx-mcp")
 
@@ -71,35 +74,62 @@ def main() -> None:
         if not v
     ]
     if missing:
-        raise RuntimeError(f"Missing required env var(s): {', '.join(missing)}")
+        log.error(f"Missing required environment variable(s): {', '.join(missing)}")
+        sys.exit(1)
 
     # Ensure the chosen port is free (clearer error than letting uvicorn fail later)
     _require_port_available(HOST, port)
 
-    # Initialize model client
-    creds = Credentials(url=URL, api_key=API_KEY)
-    model = ModelInference(model_id=MODEL_ID, credentials=creds, project_id=PROJECT_ID)
-    READY["model"] = True
+    # --- FIX START ---
+    # Initialize model client and proactively check credentials
+    try:
+        log.info("Authenticating with watsonx.ai...")
+        creds = Credentials(url=URL, api_key=API_KEY)
+        model = ModelInference(
+            model_id=MODEL_ID, credentials=creds, project_id=PROJECT_ID
+        )
+        # This call forces authentication and will fail early if credentials are bad
+        model.get_details()
+        log.info("Successfully authenticated and connected to watsonx.ai.")
+        READY["model"] = True
+    except WMLClientError as e:
+        log.error("------------------------------------------------------------------")
+        log.error("Authentication with watsonx.ai failed. This is often due to an")
+        log.error("invalid or expired 'WATSONX_API_KEY'.")
+        log.error("Please verify your credentials and environment variables.")
+        log.error(f"Reason: {e}")
+        log.error("------------------------------------------------------------------")
+        sys.exit(1)
+    except Exception as e:
+        log.exception("An unexpected error occurred during watsonx.ai initialization.")
+        sys.exit(1)
+    # --- FIX END ---
+
 
     # Define MCP server and tools
     mcp = FastMCP("Watsonx Chat Agent", port=port)
 
-    @mcp.tool(description="Chat with IBM watsonx.ai (accepts str or int)")
-    def chat(query: Union[str, int]) -> str:
-        q = str(query).strip()
-        if q == "0":
-            q = "What is the capital of Italy?"
-        log.info("chat() query=%r", q)
+    @mcp.tool(description="Chat with IBM watsonx.ai")
+    def chat(query: str) -> str:
+        q = query.strip()
+        log.info(f"Received chat query: '{q}'")
 
-        params = {GenParams.DECODING_METHOD: "greedy", GenParams.MAX_NEW_TOKENS: 200}
+        params = {
+            GenParams.DECODING_METHOD: "greedy",
+            GenParams.MAX_NEW_TOKENS: 512,
+        }
         try:
             resp = model.generate_text(prompt=q, params=params, raw_response=True)
-            reply = resp["results"][0]["generated_text"].strip()
+            if resp and resp.get("results"):
+                reply = resp["results"][0]["generated_text"].strip()
+            else:
+                log.warning("Received an empty or malformed response from watsonx.ai.")
+                reply = "Sorry, I received an unexpected response from the model."
         except Exception as e:
             log.exception("watsonx generate_text failed")
-            return f"Error from watsonx: {e}"
+            return f"An error occurred while communicating with watsonx.ai: {e}"
 
-        log.info("chat() reply=%r", reply)
+        log.info(f"Sending reply: '{reply}'")
         return reply
 
     # --------- HTTP endpoints (liveness/readiness) ----------
@@ -127,8 +157,9 @@ def main() -> None:
         ]
     )
 
-    log.info("Starting Watsonx MCP on http://%s:%d/sse", HOST, port)
-    uvicorn.run(app, host=HOST, port=port, log_level="info", access_log=False)
+    log.info(f"Starting MCP server on http://{HOST}:{port}")
+    log.info("SSE events can be viewed in your browser or with 'curl -N http://%s:%d/sse'", HOST, port)
+    uvicorn.run(app, host=HOST, port=port, log_level="warning", access_log=False)
 
 
 if __name__ == "__main__":
