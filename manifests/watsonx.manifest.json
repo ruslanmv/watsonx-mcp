@@ -1,4 +1,5 @@
 {
+  "schema_version": "1.1",
   "type": "mcp_server",
   "id": "watsonx-agent",
   "name": "Watsonx Chat Agent",
@@ -9,7 +10,8 @@
       "id": "watsonx-chat",
       "name": "watsonx-chat",
       "description": "Chat with IBM watsonx.ai",
-      "integration_type": "MCP"
+      "integration_type": "MCP",
+      "request_type": "SSE"
     },
     "resources": [],
     "prompts": [],
@@ -17,14 +19,22 @@
       "name": "watsonx-mcp",
       "description": "Watsonx SSE server",
       "url": "http://127.0.0.1:6288/sse",
-      "associated_tools": [
-        "watsonx-chat"
-      ],
+      "associated_tools": ["chat"],
       "associated_resources": [],
       "associated_prompts": []
     }
   },
-  "source_url": "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/master/manifests/watsonx.manifest.json",
+  "runner": {
+    "type": "connector",
+    "integration_type": "MCP",
+    "request_type": "SSE",
+    "url": "http://127.0.0.1:6288/sse",
+    "endpoint": "/sse",
+    "headers": {}
+  },
+  "provenance": {
+    "source_url": "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/v0.1.0/manifests/watsonx.manifest.json"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/ruslanmv/watsonx-mcp.git"
