@@ -1,0 +1,10 @@
+{
+  "type": "python",
+  "entry": "bin/run_watsonx_mcp.py",
+  "python": { "venv": ".venv" },
+  "name": "watsonx-mcp",
+  "description": "Watsonx Chat Agent (MCP over SSE)",
+  "endpoint": "/sse",
+  "sse": { "endpoint": "/sse" },
+  "health": { "path": "/health" }
+}

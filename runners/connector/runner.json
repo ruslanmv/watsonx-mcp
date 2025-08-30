@@ -1,0 +1,10 @@
+{
+  "type": "connector",
+  "name": "watsonx-chat",
+  "description": "Connector to Watsonx MCP over SSE",
+  "integration_type": "MCP",
+  "request_type": "SSE",
+  "url": "http://127.0.0.1:6289/sse",
+  "endpoint": "/sse",
+  "headers": {}
+}
