@@ -1,8 +1,8 @@
 import os
+import socket
 import logging
 import sys
 from typing import Union
-
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -19,14 +19,30 @@ import uvicorn
 
 
 HOST = "127.0.0.1"
+DEFAULT_PORT = 6288
 
 READY = {"model": False}  # Simple readiness flag
 
 
+def _require_port_available(host: str, port: int) -> None:
+    """
+    Fail fast if the requested port is already in use.
+    Keeping a static, predictable port avoids mismatches with manifests/gateways.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+        except OSError as e:
+            raise RuntimeError(
+                f"Port {port} is already in use on {host}. "
+                "Set WATSONX_AGENT_PORT/PORT to a free port."
+            ) from e
+
+
 def main() -> None:
     """Main function to configure and run the application."""
-    # NOTE: Re-introducing dotenv call. It will load a local .env if present,
-    # but will not override variables already set by the parent demo script.
+    # Load env vars first (local .env honored)
     load_dotenv()
 
     API_KEY = os.getenv("WATSONX_API_KEY")
@@ -34,21 +50,18 @@ def main() -> None:
     PROJECT_ID = os.getenv("WATSONX_PROJECT_ID")
     MODEL_ID = os.getenv("MODEL_ID", "ibm/granite-3-3-8b-instruct")
 
-    # Port selection: Trust the port provided by the matrix runtime environment.
+    # Port selection: bind EXACTLY to what we’re asked to use.
     try:
-        # The launcher script maps the 'PORT' env var to 'WATSONX_AGENT_PORT'
-        port = int(os.environ["WATSONX_AGENT_PORT"])
-    except (KeyError, ValueError):
-        print("FATAL: Port not provided by runtime environment.", file=sys.stderr)
-        sys.exit(1)
-
+        port = int(os.getenv("WATSONX_AGENT_PORT") or DEFAULT_PORT)
+    except ValueError:
+        port = DEFAULT_PORT
 
     # Minimal, readable log format
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s - %(message)s",
     )
-    log = logging.getLogger("watsonx-agent")
+    log = logging.getLogger("watsonx-mcp")
 
     # Validate required env (fail fast)
     missing = [
@@ -64,7 +77,10 @@ def main() -> None:
         log.error(f"Missing required environment variable(s): {', '.join(missing)}")
         sys.exit(1)
 
+    # Ensure the chosen port is free (clearer error than letting uvicorn fail later)
+    _require_port_available(HOST, port)
 
+    # --- FIX START ---
     # Initialize model client and proactively check credentials
     try:
         log.info("Authenticating with watsonx.ai...")
@@ -87,6 +103,8 @@ def main() -> None:
     except Exception as e:
         log.exception("An unexpected error occurred during watsonx.ai initialization.")
         sys.exit(1)
+    # --- FIX END ---
+
 
     # Define MCP server and tools
     mcp = FastMCP("Watsonx Chat Agent", port=port)
