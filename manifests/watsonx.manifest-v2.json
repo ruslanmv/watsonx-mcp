@@ -33,7 +33,7 @@
     "headers": {}
   },
   "provenance": {
-    "source_url": "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/v0.1.0/manifests/watsonx.manifest.json"
+    "source_url": "https://raw.githubusercontent.com/ruslanmv/watsonx-mcp/refs/heads/master/manifests/watsonx.manifest-v2.json"
   },
   "repository": {
     "type": "git",
