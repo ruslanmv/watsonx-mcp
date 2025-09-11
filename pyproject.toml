@@ -22,6 +22,7 @@ dependencies = [
   "uvicorn>=0.30",
   "ibm-watsonx-ai>=1.1.15",
   "python-dotenv>=1.0.1",
+  "httpx[http2]",
 ]
 
 [tool.setuptools]
