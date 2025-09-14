@@ -4,6 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/MCP-SSE%20Server-0B7285?style=for-the-badge" alt="MCP SSE Server">
+  <a href="https://github.com/agent-matrix/matrix-hub"><img src="https://img.shields.io/badge/MatrixHub-Ready-brightgreen?logo=matrix&logoColor=white&style=for-the-badge" alt="MatrixHub Ready"></a>
   <img src="https://img.shields.io/badge/License-Apache%202.0-blue?logo=apache&style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/IBM-watsonx-0f62fe?logo=ibm&logoColor=white&style=for-the-badge" alt="IBM watsonx">
 </p>
